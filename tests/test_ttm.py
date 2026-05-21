@@ -14,10 +14,10 @@ from datetime import date
 import pytest
 
 from app.analytics.ttm import (
+    _quarters_are_continuous,
+    compute_growth_rate,
     compute_ttm_deduct_pe,
     compute_ttm_deduct_profit,
-    compute_growth_rate,
-    _quarters_are_continuous,
 )
 from app.domain.models import QuarterRecord
 

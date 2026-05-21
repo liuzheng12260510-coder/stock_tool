@@ -3,8 +3,8 @@ SQLAlchemy engine + session 工厂
 """
 from __future__ import annotations
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
@@ -22,12 +22,19 @@ engine = create_engine(
 
 @event.listens_for(engine, "connect")
 def _set_sqlite_pragma(dbapi_conn, _connection_record):
-    """SQLite 优化：WAL 模式 + 外键约束"""
+    """
+    SQLite 优化：WAL 模式 + 外键约束 + 写锁等待
+
+    busy_timeout=5000ms：当另一个写事务持有锁时，最多等待 5 秒后再抛
+    OperationalError，避免多线程（APScheduler + FastAPI）并发写时立即报
+    'database is locked'。结合 max_instances=1 调度器配置，实际冲突极少。
+    """
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.execute("PRAGMA cache_size=-64000")  # 64 MB
+    cursor.execute("PRAGMA busy_timeout=5000")  # 等待最多 5 秒（毫秒单位）
     cursor.close()
 
 

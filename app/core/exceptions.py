@@ -46,3 +46,11 @@ class SchedulerError(StockSentryError):
 
 class ConfigurationError(StockSentryError):
     """配置错误（如必填项缺失）"""
+
+
+class TushareQuotaError(DataProviderError):
+    """Tushare 账号积分不足或接口权限不够（需升级积分等级）"""
+
+
+class BreakerOpenError(DataProviderError):
+    """熔断器处于 OPEN 状态，拒绝请求以保护配额"""

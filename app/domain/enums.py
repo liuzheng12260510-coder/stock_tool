@@ -3,16 +3,16 @@
 """
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class ProviderType(str, Enum):
+class ProviderType(StrEnum):
     TUSHARE = "tushare"
     AKSHARE = "akshare"
     COMPOSITE = "composite"
 
 
-class AIStatus(str, Enum):
+class AIStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     SUCCESS = "success"
@@ -20,20 +20,20 @@ class AIStatus(str, Enum):
     CACHED = "cached"
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
     PARTIAL = "partial"  # 部分成功
 
 
-class Exchange(str, Enum):
+class Exchange(StrEnum):
     SSE = "SSE"    # 上交所
     SZSE = "SZSE"  # 深交所
     BSE = "BSE"    # 北交所
 
 
-class EntType(str, Enum):
+class EntType(StrEnum):
     PRIVATE = "私营企业"
     SOE = "国有企业"
     CENTRAL = "央企"
@@ -42,7 +42,7 @@ class EntType(str, Enum):
     UNKNOWN = "未知"
 
 
-class ReportPeriod(str, Enum):
+class ReportPeriod(StrEnum):
     Q1 = "03-31"   # 一季报
     SEMI = "06-30" # 半年报
     Q3 = "09-30"   # 三季报

@@ -38,9 +38,9 @@ def get_insight(ts_code: str) -> JSONResponse:
             "key_risks": insight.key_risks,
         })
     except AIUnavailableError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except AIProviderError as e:
-        raise HTTPException(status_code=502, detail=f"AI 调用失败: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"AI 调用失败: {str(e)}") from e
     except Exception as e:
         logger.exception("AI 解读异常", ts_code=ts_code, error=str(e))
-        raise HTTPException(status_code=500, detail="内部错误")
+        raise HTTPException(status_code=500, detail="内部错误") from e

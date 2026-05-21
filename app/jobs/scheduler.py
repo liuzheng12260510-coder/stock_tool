@@ -22,7 +22,7 @@ def get_scheduler() -> BackgroundScheduler:
 
 
 def start_scheduler() -> None:
-    """启动后台调度器"""
+    """启动后台调度器，并在启动时自动恢复心跳超时的 job_run"""
     if not settings.scheduler_enabled:
         logger.info("调度器已禁用（SCHEDULER_ENABLED=false）")
         return
@@ -31,6 +31,13 @@ def start_scheduler() -> None:
     if scheduler.running:
         logger.info("调度器已运行中")
         return
+
+    # P2：启动时扫描并恢复心跳超时的未完成 job_run
+    try:
+        from app.jobs.pipeline import Pipeline  # noqa: PLC0415
+        Pipeline.recover_unfinished()
+    except Exception as e:
+        logger.warning("scheduler.recover_unfinished_error", error=str(e))
 
     # 每个工作日（周一到周五）的设定时间触发
     scheduler.add_job(
@@ -45,6 +52,9 @@ def start_scheduler() -> None:
         name="每日行情跑批",
         replace_existing=True,
         misfire_grace_time=3600,  # 允许最多延误 1 小时
+        # 防止同一个 job 并发执行：同一时刻只允许 1 个实例运行
+        # 配合 SQLite busy_timeout=5000ms 彻底避免 'database is locked' 错误
+        max_instances=1,
     )
 
     scheduler.start()

@@ -70,6 +70,9 @@
                         <th class="px-3 py-3 text-right">市值(亿)</th>
                         <th class="px-3 py-3 text-right">综合分</th>
                         <th class="px-3 py-3 text-right">排名%</th>
+                        <th class="px-3 py-3 text-right" title="杜邦三因子综合评分 0-100">杜邦分</th>
+                        <th class="px-3 py-3 text-right" title="连续分红年数">分红年</th>
+                        <th class="px-3 py-3 text-center" title="高杠杆/低质量盈余红旗">红旗</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
@@ -108,6 +111,27 @@
                     </td>
                     <td class="px-3 py-2.5 text-right text-gray-500">
                         {% if s.composite_rank %}{{ "%.1f"|format(s.composite_rank) }}%{% else %}-{% endif %}
+                    </td>
+                    <td class="px-3 py-2.5 text-right font-mono">
+                        {% if s.dupont_score %}
+                            <span class="{% if s.dupont_score >= 70 %}text-green-600{% elif s.dupont_score >= 50 %}text-yellow-600{% else %}text-red-500{% endif %}">
+                                {{ "%.0f"|format(s.dupont_score) }}
+                            </span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td class="px-3 py-2.5 text-right font-mono">
+                        {% if s.dividend_continuity is not none %}
+                            <span class="{% if s.dividend_continuity >= 5 %}text-green-600{% elif s.dividend_continuity >= 3 %}text-yellow-600{% else %}text-gray-400{% endif %}">
+                                {{ s.dividend_continuity }}年
+                            </span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td class="px-3 py-2.5 text-center">
+                        {% if s.high_leverage_flag %}
+                            <span class="inline-block px-1.5 py-0.5 text-xs bg-red-100 text-red-700 rounded" title="高杠杆警告">⚠️ 杠杆</span>
+                        {% else %}
+                            <span class="text-green-500 text-xs">✓</span>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}

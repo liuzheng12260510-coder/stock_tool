@@ -1,0 +1,200 @@
+# StockSentry · Cline Rules
+# 个股哨兵 AI 辅助开发规则
+
+## 0. 项目身份
+
+- 项目名：**StockSentry 个股哨兵**，A 股民营企业价值筛选系统。
+- 核心价值主张：每日定时跑批、历史落库、单页只读看板、按需 AI 深度解读。
+- 主入口：`app/main.py`；Windows 一键启动：`run.bat`；API 文档：`http://127.0.0.1:8000/api/docs`。
+
+---
+
+## 1. 技术栈与版本约束
+
+| 组件 | 版本约束 | 备注 |
+|------|----------|------|
+| Python | ≥ 3.11 | 使用 `match`、`Self`、`tomllib` 等新特性 |
+| FastAPI | ≥ 0.111 | 路由只用 `APIRouter`，统一在 `app/main.py` 注册 |
+| SQLAlchemy | ≥ 2.0（2.0 风格） | 禁止 1.x `Query` 风格；用 `select()` + `Session.execute()` |
+| Pydantic | v2（`pydantic>=2.7`） | 使用 `model_validator`、`field_validator`，禁止 v1 `@validator` |
+| pydantic-settings | ≥ 2.3 | 所有配置走 `app/core/config.py` 的 `Settings` 类 |
+| APScheduler | ≥ 3.10 | 调度器实例在 `app/jobs/scheduler.py`，不另起调度 |
+| structlog | ≥ 24 | 统一日志，**禁止** `print()`、`logging.basicConfig()` |
+
+> 📌 **新增任何依赖**，必须同时更新 `requirements.txt` **和** `pyproject.toml` 的 `dependencies` 列表。
+
+---
+
+## 2. 目录分层规则（强约束）
+
+```
+app/
+├── core/       只放横切关注点（config / logging / exceptions / ratelimit）
+│               不得 import 任何业务模块（domain / db / data / analytics / …）
+├── domain/     纯 Python 领域模型（dataclass / Enum / Pydantic schema）
+│               不得 import SQLAlchemy、ORM、外部 IO
+├── db/         ORM 模型（db/models.py）+ 会话工厂（db/session.py）
+│               只能 import core / domain
+├── data/       外部数据源适配层（Tushare / AkShare / 交易日历）
+│               只能 import core / domain / db（读取配置与模型）
+├── analytics/  纯计算层（TTM / 因子 / 评分 / 过滤）
+│               只能 import core / domain；禁止 import db / data / api
+├── jobs/       跑批 Pipeline + APScheduler 调度
+│               可 import 所有层，但不得暴露 HTTP 路由
+├── ai/         OpenRouter 调用 + Prompt 管理 + AI 服务
+│               通过 db 缓存结果；禁止直接 import api/web
+├── services/   业务编排层（筛选 / 导出）
+│               可 import db / data / analytics / ai
+├── api/        FastAPI 路由（参数校验 + 响应）
+│               只能 import services / domain（不直接操作 db）
+└── web/        Jinja2 页面路由 + 模板
+                只能 import services / domain
+```
+
+> ❌ **禁止反向依赖**：低层模块（analytics/domain/core）绝不能 import 高层模块（api/web/jobs）。
+
+---
+
+## 3. 编码规范
+
+### 3.1 代码风格
+
+- 遵循 `pyproject.toml` 中 ruff 配置：`line-length = 100`，已启用 `E/F/W/I/UP/B/C4/SIM`。
+- 修改前先在本地运行 `ruff check app/ scripts/ tests/` 确认零警告。
+- 所有公开函数/方法必须有类型注解（参数 + 返回值）。
+- 非显而易见的公共函数/类必须有 docstring（一句话说明 + 必要的 Args/Returns）。
+
+### 3.2 日志
+
+- 统一使用 `structlog.get_logger(__name__)` 获取 logger。
+- 关键节点（跑批开始/结束、AI 调用、外部请求重试）使用结构化字段：
+  ```python
+  log.info("pipeline.start", trade_date=date, force=force)
+  ```
+- 降级路径（如 Tushare 权限不足自动切 fina_indicator）必须有 `log.warning` + `reason` 字段。
+
+### 3.3 异常处理
+
+- 自定义异常继承 `app/core/exceptions.py` 中定义的基类。
+- FastAPI 路由层捕获业务异常后返回规范 JSON（不泄露堆栈）；原始异常写入 `log.error`。
+- 外部 IO 调用异常允许 `tenacity` 重试，超出重试次数后**向上抛出**，不吞异常。
+
+### 3.4 外部 IO 规范
+
+- Tushare / AkShare 所有接口调用必须经过 `app/core/ratelimit.py` 的限速装饰器。
+- 网络请求使用 `tenacity` 配置指数退避重试（最少 3 次）。
+- 禁止在 `analytics/` 或 `domain/` 中直接发起网络请求。
+
+---
+
+## 4. 数据与时间规范
+
+- **交易日**：所有"是否交易日"、"上一交易日"、"日期范围"计算，统一通过 `app/data/trade_calendar.py` 提供的函数，禁止在其他地方手动计算。
+- **日期格式**：与 Tushare 交互统一 `YYYYMMDD` 字符串；Python 内部使用 `datetime.date`；数据库存为 `String(8)`。
+- **金额单位**：与现有约定保持一致（万元 for Tushare 财务数据；元/股 for 股价），修改时必须在 PR 说明中标注。
+- **TTM 计算**：严格通过 `app/analytics/ttm.py` 的逻辑，**禁止**在其他模块重新实现 TTM，以避免季度错位 Bug。
+
+---
+
+## 5. 核心业务逻辑——禁止随意改动
+
+以下逻辑涉及系统核心，**任何改动必须附带充分的业务理由和对应单元测试**：
+
+| 模块 | 关键逻辑 | 约束 |
+|------|----------|------|
+| `app/analytics/ttm.py` | 季度连续性校验 + TTM 聚合 | 修改必须通过 `tests/test_ttm.py` |
+| `app/analytics/scoring.py` | 横截面 z-score 归一化（5 维度，各 20%） | 维度权重变更需更新 README 评分体系章节 |
+| `app/analytics/filters.py` | 民企识别（act_ent_type + 关键词兜底） | 不得降低识别精度；降级路径必须有 warning 日志 |
+| `app/jobs/pipeline.py` | 可重入设计 + `--force` 语义 | 重构时保留幂等性；force 模式必须强制覆盖当日数据 |
+
+---
+
+## 6. AI 模块规范
+
+- 所有 prompt 定义集中在 `app/ai/prompts.py`，**禁止**在 service / route 层硬编码字符串 prompt。
+- 结构化输出保持 **5 维度**（价值 / 成长 / 稳定 / 股息 / 安全）不变；增减维度需同步更新前端模板。
+- `OPENROUTER_API_KEY` 未配置时，AI 功能**优雅降级**（返回 `null` 或占位说明），禁止抛出 HTTP 500。
+- AI 分析结果**必须落库缓存**；相同股票相同交易日重复请求命中缓存，不重复调用 LLM。
+- 模型名称、temperature 等参数通过 `app/core/config.py` 配置，不硬编码在 `openrouter.py`。
+
+---
+
+## 7. 跑批 Pipeline 规范
+
+- 全市场数据拉取优先批量接口（`daily` / `daily_basic`），**禁止**逐票串行循环。
+- Pipeline 步骤日志格式：`pipeline.<step>` + `{trade_date, elapsed_ms}`。
+- 手动跑批命令：`python scripts/run_once.py [YYYYMMDD] [--force]`，不修改此接口。
+- 定时调度：工作日 15:30 CST，由 `app/jobs/scheduler.py` 管理，不在 `main.py` 中硬编码 cron。
+
+---
+
+## 8. 测试规范
+
+- 测试框架：`pytest`，`asyncio_mode = auto`（已在 `pyproject.toml` 配置）。
+- 修改 TTM / 因子 / 评分 / 筛选逻辑 → 必须运行或新增 `tests/` 下对应单测。
+- 外部 IO（Tushare / AkShare / OpenRouter）在测试中必须 mock，**不允许**测试用例发起真实网络请求。
+- 运行方式：`pytest -v --tb=short`（与 CI 保持一致）。
+
+---
+
+## 9. 安全与配置管理
+
+- **绝对禁止** Token / API Key / 密码硬编码进任何 `.py` 文件或提交到 Git 仓库。
+- 所有密钥通过 `.env` 文件 + `app/core/config.py`（`pydantic-settings`）读取。
+- 新增配置项时：① 在 `app/core/config.py` 的 `Settings` 中添加字段（含默认值或 `...` 必填）；② 同步更新 `.env.example`（含注释说明）。
+- `.gitignore` 已忽略 `.env`，**不得**修改该规则。
+
+---
+
+## 10. 变更与提交规范
+
+- **最小变更原则**：不引入与任务无关的格式化改动（ruff format 整体批量格式化除外）。
+- 删除/重命名公开路由或函数签名前，先在 `README.md` 的 API 文档表格中同步更新。
+- Windows 兼容：路径操作统一使用 `pathlib.Path`，禁止硬编码 `/` 分隔符。
+- 新增脚本放在 `scripts/`，并在 `README.md` "手动跑批" 章节补充用法说明。
+
+---
+
+## 11. 常用命令速查
+
+```bash
+# 安装依赖
+pip install -r requirements.txt
+
+# 初始化数据库
+python scripts/init_db.py
+
+# 启动服务（开发）
+python -m app.main
+
+# 手动跑批（最近交易日）
+python scripts/run_once.py
+
+# 手动跑批（指定日期 + 强制重跑）
+python scripts/run_once.py 20250519 --force
+
+# 代码检查
+ruff check app/ scripts/ tests/
+
+# 运行测试
+pytest -v --tb=short
+
+# Windows 一键启动
+run.bat
+```
+
+---
+
+## 12. 禁止事项速查（Quick Forbidden List）
+
+| ❌ 禁止 | ✅ 替代 |
+|--------|--------|
+| `print()` 调试输出 | `structlog.get_logger()` |
+| SQLAlchemy 1.x `Query` 风格 | `select()` + `session.execute()` |
+| Pydantic v1 `@validator` | `@field_validator` / `@model_validator` |
+| 在 analytics/domain 中发网络请求 | 通过 `data/` 层注入数据 |
+| 硬编码 API Key / Token | `.env` + `Settings` |
+| 逐票串行拉取全市场数据 | 批量接口一次拉全市场 |
+| 在 route 层直接操作 db session | 通过 `services/` 编排 |
+| 重新实现 TTM 计算 | 复用 `app/analytics/ttm.py` |
+| 测试中发真实网络请求 | mock 外部 IO 依赖 |

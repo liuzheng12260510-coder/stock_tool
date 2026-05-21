@@ -5,6 +5,9 @@
 1. 优先使用 DB 中 act_ent_type 字段（来自 Tushare stock_company）
 2. act_ent_type 缺失时回退到 act_name 关键词匹配
 3. 仍无法判断时标记为 unknown，日志标记降级
+
+P1 新增：
+- apply_hard_filters 支持杜邦/盈余质量/分红连续性 三个新硬性阈值
 """
 from __future__ import annotations
 
@@ -96,10 +99,6 @@ def apply_prescreen_filter(
     用 daily_basic 中已有的 pe_ttm 和 total_mv 做快速判断，跳过明显
     不合格的股票，避免为它们发起财务接口请求。
 
-    因 pe_deduct_ttm >= pe_ttm（扣非利润 <= 净利润），用 pe_ttm 作保守代理：
-    若 pe_ttm > 阈值，则 pe_deduct_ttm 几乎必然也超标，可安全跳过；
-    反之若 pe_ttm <= 阈值，仍保留该股票继续拉财务做精确计算。
-
     Args:
         ts_code:                 股票代码（日志用）
         exchange:                交易所（'BSE' = 北交所）
@@ -119,9 +118,12 @@ def apply_prescreen_filter(
         return False, "北交所股票"
 
     # 市值 > 上限
-    if prescreen_total_mv_max_yi > 0 and total_mv_yi is not None:
-        if total_mv_yi > prescreen_total_mv_max_yi:
-            return False, f"市值={total_mv_yi:.1f}亿>{prescreen_total_mv_max_yi}亿（预筛）"
+    if (
+        prescreen_total_mv_max_yi > 0
+        and total_mv_yi is not None
+        and total_mv_yi > prescreen_total_mv_max_yi
+    ):
+        return False, f"市值={total_mv_yi:.1f}亿>{prescreen_total_mv_max_yi}亿（预筛）"
 
     # PE_TTM 超标或亏损
     if prescreen_pe_ttm_max > 0:
@@ -144,7 +146,11 @@ def apply_hard_filters(
     pe_ttm: float | None = None,
     pe_deduct_ttm: float | None = None,
     dv_ttm: float | None = None,
-    total_mv_yi: float | None = None,  # 亿元
+    total_mv_yi: float | None = None,     # 亿元
+    high_leverage_flag: bool = False,      # P1：杜邦高杠杆红旗
+    cfo_to_np_ratio: float | None = None,  # P1：CFO/净利润比值
+    dividend_continuity: int | None = None,# P1：连续分红年数
+    clearance_dividend_flag: bool = False, # P1：清仓式分红红旗
     # 阈值
     exclude_bj: bool = True,
     exclude_soe: bool = True,
@@ -152,9 +158,37 @@ def apply_hard_filters(
     pe_deduct_max: float = 20.0,
     dv_ttm_min: float = 2.0,
     total_mv_max_yi: float = 100.0,
+    # P1 新增阈值
+    max_eqt_multiplier: float = 3.0,       # 0 = 不限
+    min_cfo_to_np: float = 0.5,            # 0 = 不限
+    min_div_continuity_years: int = 3,     # 0 = 不限
+    reject_clearance_div: bool = True,
 ) -> tuple[bool, list[str]]:
     """
-    应用硬性筛选条件
+    应用硬性筛选条件（P1 增加三个新过滤维度）
+
+    Args:
+        ts_code:                股票代码（日志用）
+        exchange:               交易所
+        is_private:             是否民营企业
+        pe_ttm:                 市盈率 TTM
+        pe_deduct_ttm:          扣非 PE TTM
+        dv_ttm:                 股息率 %
+        total_mv_yi:            总市值（亿元）
+        high_leverage_flag:     P1 杜邦高杠杆红旗
+        cfo_to_np_ratio:        P1 CFO/净利润比值
+        dividend_continuity:    P1 连续分红年数
+        clearance_dividend_flag: P1 清仓式分红红旗
+        exclude_bj:             是否排除北交所
+        exclude_soe:            是否排除国企
+        pe_ttm_max:             PE TTM 上限
+        pe_deduct_max:          扣非 PE 上限
+        dv_ttm_min:             股息率下限
+        total_mv_max_yi:        市值上限
+        max_eqt_multiplier:     权益乘数上限（0=不限）
+        min_cfo_to_np:          CFO/NP 下限（0=不限）
+        min_div_continuity_years: 最低连续分红年数（0=不限）
+        reject_clearance_div:   是否剔除清仓式分红
 
     Returns:
         (passed, fail_reasons)
@@ -182,17 +216,45 @@ def apply_hard_filters(
             fail_reasons.append(f"扣非PE_TTM={pe_deduct_ttm:.1f}（扣非亏损）")
         elif pe_deduct_ttm > pe_deduct_max:
             fail_reasons.append(f"扣非PE_TTM={pe_deduct_ttm:.1f}>{pe_deduct_max}")
-    elif pe_ttm is not None:
-        # 无扣非 PE 时用 PE 代替
-        pass
 
     # 股息率下限
     if dv_ttm is not None and dv_ttm < dv_ttm_min:
         fail_reasons.append(f"股息率={dv_ttm:.2f}%<{dv_ttm_min}%")
 
     # 市值上限
-    if total_mv_max_yi > 0 and total_mv_yi is not None:
-        if total_mv_yi > total_mv_max_yi:
-            fail_reasons.append(f"总市值={total_mv_yi:.1f}亿>{total_mv_max_yi}亿")
+    if total_mv_max_yi > 0 and total_mv_yi is not None and total_mv_yi > total_mv_max_yi:
+        fail_reasons.append(f"总市值={total_mv_yi:.1f}亿>{total_mv_max_yi}亿")
+
+    # ── P1：杜邦高杠杆过滤 ─────────────────────────────────────────────
+    if max_eqt_multiplier > 0 and high_leverage_flag:
+        fail_reasons.append(f"高杠杆粉饰ROE（权益乘数>{max_eqt_multiplier}或资产负债率>70%）")
+        logger.debug(
+            "filters.reject_high_leverage",
+            ts_code=ts_code,
+        )
+
+    # ── P1：盈余质量过滤 ────────────────────────────────────────────────
+    if min_cfo_to_np > 0 and cfo_to_np_ratio is not None and cfo_to_np_ratio < min_cfo_to_np:
+        fail_reasons.append(
+            f"盈余质量不足(CFO/NP={cfo_to_np_ratio:.2f}<{min_cfo_to_np})"
+        )
+
+    # ── P1：分红连续性过滤 ──────────────────────────────────────────────
+    if (
+        min_div_continuity_years > 0
+        and dividend_continuity is not None
+        and dividend_continuity < min_div_continuity_years
+    ):
+        fail_reasons.append(
+            f"连续分红年数={dividend_continuity}<{min_div_continuity_years}年"
+        )
+
+    # ── P1：清仓式分红过滤 ──────────────────────────────────────────────
+    if reject_clearance_div and clearance_dividend_flag:
+        fail_reasons.append("疑似清仓式分红（单年派现占近5年总额>70%）")
+        logger.warning(
+            "filters.reject_clearance_dividend",
+            ts_code=ts_code,
+        )
 
     return len(fail_reasons) == 0, fail_reasons

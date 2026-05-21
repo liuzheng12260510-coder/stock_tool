@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-from typing import Optional
 
 from app.core.config import settings
 from app.core.exceptions import ExportError
@@ -15,7 +14,7 @@ from app.services.screening import get_screened_stocks
 logger = get_logger("export_service")
 
 
-def export_screened_to_excel(trade_date: Optional[date] = None) -> Path:
+def export_screened_to_excel(trade_date: date | None = None) -> Path:
     """
     将筛选结果导出为 Excel 文件
 
@@ -31,7 +30,6 @@ def export_screened_to_excel(trade_date: Optional[date] = None) -> Path:
             Alignment,
             Border,
             Font,
-            GradientFill,
             PatternFill,
             Side,
         )

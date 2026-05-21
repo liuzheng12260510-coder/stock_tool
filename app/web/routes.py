@@ -3,9 +3,9 @@ Web 页面路由 — Jinja2 渲染
 """
 from __future__ import annotations
 
+import contextlib
 from datetime import date
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -16,16 +16,14 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
 @web_router.get("/", response_class=HTMLResponse)
-def dashboard(request: Request, trade_date: Optional[str] = None) -> HTMLResponse:
+def dashboard(request: Request, trade_date: str | None = None) -> HTMLResponse:
     """主看板 — 当日筛选结果"""
     from app.services.screening import get_industry_distribution, get_screened_stocks
 
     parsed_date = None
     if trade_date:
-        try:
+        with contextlib.suppress(ValueError):
             parsed_date = date.fromisoformat(trade_date)
-        except ValueError:
-            pass
 
     snapshots, total, actual_date = get_screened_stocks(
         trade_date=parsed_date, min_score=0, page=1, page_size=200

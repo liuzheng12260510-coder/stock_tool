@@ -3,13 +3,11 @@ StockSentry — FastAPI 应用工厂 + 启动入口
 """
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from app.api.routes import export, insight, jobs, stocks
 from app.core.config import settings
@@ -60,7 +58,6 @@ def create_app() -> FastAPI:
     )
 
     # ── 静态文件 ─────────────────────────────────────────────────────────
-    import os
     from pathlib import Path
 
     static_dir = Path(__file__).parent / "web" / "static"

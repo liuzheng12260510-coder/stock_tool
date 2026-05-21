@@ -107,6 +107,131 @@
     </div>
 </div>
 
+<!-- ── 财务体检卡片（P3 新增） ── -->
+<div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-5"
+     x-data="financialDeepPanel('{{ snapshot.ts_code }}')"
+     x-init="load()">
+
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold text-gray-800">🏥 财务体检</h2>
+        <button @click="load()" :disabled="loading"
+            class="text-xs text-blue-600 hover:underline disabled:text-gray-300">
+            <span x-show="loading">加载中…</span>
+            <span x-show="!loading && loaded">↻ 刷新</span>
+        </button>
+    </div>
+
+    <div x-show="loading" class="text-center py-8 text-gray-400 text-sm">加载财务数据…</div>
+    <div x-show="loadError" x-cloak class="text-center py-6 text-red-500 text-sm" x-text="loadError"></div>
+
+    <div x-show="loaded && !loading" x-cloak>
+
+        <!-- 红旗徽章 -->
+        <template x-if="redFlags && redFlags.length > 0">
+            <div class="mb-4 p-3 bg-red-50 rounded-lg border border-red-100">
+                <div class="text-xs font-semibold text-red-700 mb-2">⚠️ 财务红旗</div>
+                <template x-for="flag in redFlags" :key="flag">
+                    <div class="text-xs text-red-600 mb-1">• <span x-text="flag"></span></div>
+                </template>
+            </div>
+        </template>
+        <template x-if="!redFlags || redFlags.length === 0">
+            <div class="mb-4 px-3 py-2 bg-green-50 rounded-lg text-xs text-green-700">✓ 无明显财务风险红旗</div>
+        </template>
+
+        <!-- 三栏数据 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+            <!-- 杜邦三因子趋势 -->
+            <div>
+                <div class="text-xs font-semibold text-gray-600 mb-2">📐 杜邦三因子（近4季）</div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs divide-y divide-gray-100">
+                        <thead class="bg-gray-50 text-gray-400">
+                            <tr>
+                                <th class="px-2 py-1 text-left">报告期</th>
+                                <th class="px-2 py-1 text-right">ROE%</th>
+                                <th class="px-2 py-1 text-right">净利率%</th>
+                                <th class="px-2 py-1 text-right">乘数</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-50">
+                            <template x-if="dupont && dupont.length > 0">
+                                <template x-for="r in dupont.slice(-4)" :key="r.period || r.end_date">
+                                    <tr>
+                                        <td class="px-2 py-1 text-gray-500" x-text="(r.period || r.end_date || '').substring(0, 7)"></td>
+                                        <td class="px-2 py-1 text-right" :class="r.roe >= 15 ? 'text-green-600' : r.roe >= 8 ? 'text-yellow-600' : 'text-red-500'" x-text="r.roe != null ? r.roe.toFixed(1) : '-'"></td>
+                                        <td class="px-2 py-1 text-right text-gray-700" x-text="r.npta != null ? r.npta.toFixed(1) : '-'"></td>
+                                        <td class="px-2 py-1 text-right text-gray-700" x-text="r.eqt_multiplier != null ? r.eqt_multiplier.toFixed(2) : '-'"></td>
+                                    </tr>
+                                </template>
+                            </template>
+                            <template x-if="!dupont || dupont.length === 0">
+                                <tr><td colspan="4" class="px-2 py-4 text-center text-gray-300">暂无数据</td></tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- CFO/NP 趋势 -->
+            <div>
+                <div class="text-xs font-semibold text-gray-600 mb-2">💰 CFO/NP 盈余质量（近4季）</div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs divide-y divide-gray-100">
+                        <thead class="bg-gray-50 text-gray-400">
+                            <tr>
+                                <th class="px-2 py-1 text-left">报告期</th>
+                                <th class="px-2 py-1 text-right">CFO/NP</th>
+                                <th class="px-2 py-1 text-right">营收YoY%</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-50">
+                            <template x-if="cfoNp && cfoNp.length > 0">
+                                <template x-for="r in cfoNp.slice(-4)" :key="r.period || r.end_date">
+                                    <tr>
+                                        <td class="px-2 py-1 text-gray-500" x-text="(r.period || r.end_date || '').substring(0, 7)"></td>
+                                        <td class="px-2 py-1 text-right font-mono" :class="r.cfo_to_np != null && r.cfo_to_np >= 0.8 ? 'text-green-600' : r.cfo_to_np != null && r.cfo_to_np >= 0.4 ? 'text-yellow-600' : 'text-red-500'" x-text="r.cfo_to_np != null ? r.cfo_to_np.toFixed(2) : '-'"></td>
+                                        <td class="px-2 py-1 text-right font-mono" :class="r.netprofit_yoy != null && r.netprofit_yoy > 0 ? 'text-green-600' : 'text-red-500'" x-text="r.netprofit_yoy != null ? (r.netprofit_yoy > 0 ? '+' : '') + r.netprofit_yoy.toFixed(1) + '%' : '-'"></td>
+                                    </tr>
+                                </template>
+                            </template>
+                            <template x-if="!cfoNp || cfoNp.length === 0">
+                                <tr><td colspan="3" class="px-2 py-4 text-center text-gray-300">暂无数据</td></tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 分红时间轴 -->
+            <div>
+                <div class="text-xs font-semibold text-gray-600 mb-2">🎁 分红历史（近5年）</div>
+                <template x-if="dividends && dividends.length > 0">
+                    <div class="space-y-1.5">
+                        <template x-for="d in dividends" :key="d.end_date">
+                            <div class="flex items-center gap-2">
+                                <div class="w-2 h-2 rounded-full bg-green-400 flex-shrink-0"></div>
+                                <span class="text-gray-500 text-xs" x-text="(d.year || d.end_date.substring(0,4)) + '年'"></span>
+                                <span class="text-gray-800 font-mono text-xs" x-text="d.cash_div != null ? '¥' + d.cash_div.toFixed(3) + '/股' : '-'"></span>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template x-if="!dividends || dividends.length === 0">
+                    <div class="text-center py-4 text-gray-300 text-xs">暂无分红记录</div>
+                </template>
+                <template x-if="latestFactor && latestFactor.dividend_continuity != null">
+                    <div class="mt-2 text-xs text-gray-500">
+                        连续分红：<span :class="latestFactor.dividend_continuity >= 5 ? 'text-green-600 font-semibold' : latestFactor.dividend_continuity >= 3 ? 'text-yellow-600' : 'text-red-500'" x-text="latestFactor.dividend_continuity + ' 年'"></span>
+                    </div>
+                </template>
+            </div>
+
+        </div><!-- end grid -->
+    </div><!-- end loaded -->
+</div>
+
 {% endif %}
 {% endblock %}
 
@@ -142,6 +267,41 @@
         });
     }
 }());
+
+function financialDeepPanel(tsCode) {
+    return {
+        loading: false,
+        loaded: false,
+        loadError: null,
+        dupont: [],
+        cfoNp: [],
+        dividends: [],
+        latestFactor: null,
+        redFlags: [],
+        async load() {
+            this.loading = true;
+            this.loadError = null;
+            try {
+                const resp = await fetch(`/api/stocks/${tsCode}/financial-deep`);
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${resp.status}`);
+                }
+                const data = await resp.json();
+                this.dupont = data.dupont_timeseries || [];
+                this.cfoNp = data.cfo_np_timeseries || [];
+                this.dividends = data.dividend_history || [];
+                this.latestFactor = data.latest_factor || null;
+                this.redFlags = data.red_flags || [];
+                this.loaded = true;
+            } catch(e) {
+                this.loadError = `财务数据加载失败：${e.message}`;
+            } finally {
+                this.loading = false;
+            }
+        }
+    }
+}
 
 function insightPanel(tsCode) {
     return {

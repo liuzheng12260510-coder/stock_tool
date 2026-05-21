@@ -12,10 +12,6 @@ TTM 计算 — 修正原代码季度对齐 Bug
 """
 from __future__ import annotations
 
-from datetime import date
-from typing import Optional
-
-from app.core.exceptions import TTMCalculationError
 from app.core.logging import get_logger
 from app.domain.models import QuarterRecord
 
@@ -49,7 +45,7 @@ def _quarters_are_continuous(quarters: list[QuarterRecord]) -> bool:
 def compute_ttm_deduct_profit(
     quarters: list[QuarterRecord],
     min_quarters: int = 4,
-) -> Optional[float]:
+) -> float | None:
     """
     计算 TTM 扣非净利润（元）
 
@@ -96,7 +92,7 @@ def compute_ttm_deduct_profit(
 def compute_ttm_deduct_pe(
     quarters: list[QuarterRecord],
     total_mv_wan: float,
-) -> Optional[float]:
+) -> float | None:
     """
     计算扣非 TTM PE
 
@@ -122,7 +118,7 @@ def compute_ttm_deduct_pe(
     return round(pe, 2)
 
 
-def compute_ttm_revenue(quarters: list[QuarterRecord]) -> Optional[float]:
+def compute_ttm_revenue(quarters: list[QuarterRecord]) -> float | None:
     """计算 TTM 营业收入（元）"""
     if len(quarters) < 4:
         return None
@@ -140,7 +136,7 @@ def compute_ttm_revenue(quarters: list[QuarterRecord]) -> Optional[float]:
     return sum(revenues)
 
 
-def compute_growth_rate(quarters: list[QuarterRecord]) -> Optional[float]:
+def compute_growth_rate(quarters: list[QuarterRecord]) -> float | None:
     """
     计算 TTM 营收同比增速（%）
 

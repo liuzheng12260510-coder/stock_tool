@@ -49,12 +49,21 @@ class OpenRouterProvider:
         wait=wait_exponential(multiplier=1, min=5, max=30),
         reraise=True,
     )
-    def analyze_stock(self, snapshot: StockSnapshot) -> AIInsight:
+    def analyze_stock(
+        self,
+        snapshot: StockSnapshot,
+        dupont_context: str = "",
+        cfo_context: str = "",
+        dividend_context: str = "",
+    ) -> AIInsight:
         """
-        分析单只股票，返回 5 维度 AIInsight
+        分析单只股票，返回 5 维度 AIInsight（P3：含财务上下文）
 
         Args:
-            snapshot: 股票快照（含估值数据）
+            snapshot:         股票快照（含估值数据）
+            dupont_context:   杜邦三因子文字摘要（P3 新增）
+            cfo_context:      CFO/NP 近4季趋势摘要（P3 新增）
+            dividend_context: 分红历史文字摘要（P3 新增）
 
         Returns:
             AIInsight（status='success'）
@@ -62,8 +71,13 @@ class OpenRouterProvider:
         Raises:
             AIProviderError: 调用失败
         """
-        user_prompt = build_stock_analysis_prompt(snapshot)
-        prompt_hash = hashlib.md5(
+        user_prompt = build_stock_analysis_prompt(
+            snapshot,
+            dupont_context=dupont_context,
+            cfo_context=cfo_context,
+            dividend_context=dividend_context,
+        )
+        _ = hashlib.md5(
             (snapshot.ts_code + user_prompt).encode()
         ).hexdigest()[:16]
 
@@ -115,6 +129,10 @@ class OpenRouterProvider:
             # JSON Schema 模式下，content 直接是合法 JSON 字符串
             parsed = json.loads(content)
 
+            # 解析 financial_red_flags（P3 新增字段，兼容旧版 AI 未返回时）
+            raw_flags = parsed.get("financial_red_flags", [])
+            flags = raw_flags if isinstance(raw_flags, list) else []
+
             insight = AIInsight(
                 ts_code=snapshot.ts_code,
                 overseas_revenue_pattern=parsed.get("overseas_revenue_pattern", ""),
@@ -122,6 +140,7 @@ class OpenRouterProvider:
                 core_business_logic=parsed.get("core_business_logic", ""),
                 moat_assessment=parsed.get("moat_assessment", ""),
                 key_risks=parsed.get("key_risks", ""),
+                financial_red_flags=flags,
                 model=settings.ai_model,
                 status="success",
                 from_cache=False,
