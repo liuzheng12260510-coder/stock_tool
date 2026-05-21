@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}看板 — StockSentry{% endblock %}
+{% block nav_dashboard %}font-bold text-white underline{% endblock %}
+
+{% block content %}
+<!-- 页面标题栏 -->
+<div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">📊 筛选看板</h1>
+        <p class="text-sm text-gray-500 mt-0.5">交易日：{{ trade_date }} &nbsp;|&nbsp; 通过筛选：<strong class="text-blue-700">{{ total }}</strong> 只</p>
+    </div>
+    <div class="flex gap-2">
+        <a href="/api/export/excel" class="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white text-sm rounded-lg font-medium transition">
+            ⬇ 导出 Excel
+        </a>
+        <button
+            hx-post="/api/jobs/run"
+            hx-swap="none"
+            hx-on::after-request="alert('跑批任务已启动！请稍后刷新页面查看结果。')"
+            class="inline-flex items-center gap-1.5 px-4 py-2 bg-green-700 hover:bg-green-800 text-white text-sm rounded-lg font-medium transition">
+            ▶ 手动跑批
+        </button>
+    </div>
+</div>
+
+{% if total == 0 %}
+<!-- 空状态 -->
+<div class="text-center py-20 bg-white rounded-xl border border-gray-100 shadow-sm">
+    <div class="text-6xl mb-4">🔍</div>
+    <h2 class="text-xl font-semibold text-gray-700 mb-2">暂无筛选结果</h2>
+    <p class="text-gray-500 text-sm mb-6">可能原因：数据库为空、当日非交易日、筛选阈值过严</p>
+    <button
+        hx-post="/api/jobs/run"
+        hx-swap="none"
+        hx-on::after-request="alert('跑批已启动，完成后刷新此页面')"
+        class="px-6 py-2.5 bg-blue-700 text-white rounded-lg font-medium hover:bg-blue-800 transition">
+        立即跑批
+    </button>
+</div>
+{% else %}
+
+<!-- 两栏布局：表格 + 饼图 -->
+<div class="grid grid-cols-1 xl:grid-cols-4 gap-5">
+
+    <!-- 左：筛选结果表 (3/4) -->
+    <div class="xl:col-span-3 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <!-- 搜索栏 -->
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-3" x-data="{ search: '' }">
+            <input
+                type="text"
+                x-model="search"
+                placeholder="搜索代码或公司名…"
+                class="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+            <span class="text-xs text-gray-400" x-text="search ? '过滤中' : '共 {{ total }} 条'"></span>
+        </div>
+
+        <!-- 表格 -->
+        <div class="overflow-x-auto" x-data="{ search: '' }">
+            <input type="hidden" x-model="$store.search" />
+            <table class="w-full text-sm divide-y divide-gray-100">
+                <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide sticky top-0">
+                    <tr>
+                        <th class="px-3 py-3 text-left">代码/名称</th>
+                        <th class="px-3 py-3 text-left">行业</th>
+                        <th class="px-3 py-3 text-right">收盘</th>
+                        <th class="px-3 py-3 text-right">涨跌%</th>
+                        <th class="px-3 py-3 text-right">扣非PE</th>
+                        <th class="px-3 py-3 text-right">股息%</th>
+                        <th class="px-3 py-3 text-right">市值(亿)</th>
+                        <th class="px-3 py-3 text-right">综合分</th>
+                        <th class="px-3 py-3 text-right">排名%</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                {% for s in snapshots %}
+                <tr class="hover:bg-blue-50 transition cursor-pointer" onclick="location.href='/stock/{{ s.ts_code }}'">
+                    <td class="px-3 py-2.5">
+                        <div class="font-medium text-blue-700">{{ s.ts_code }}</div>
+                        <div class="text-xs text-gray-500">{{ s.name }}</div>
+                    </td>
+                    <td class="px-3 py-2.5 text-gray-600 text-xs">{{ s.industry or '-' }}</td>
+                    <td class="px-3 py-2.5 text-right font-mono">
+                        {% if s.close %}{{ "%.2f"|format(s.close) }}{% else %}-{% endif %}
+                    </td>
+                    <td class="px-3 py-2.5 text-right font-mono">
+                        {% if s.pct_chg is not none %}
+                            <span class="{% if s.pct_chg > 0 %}pct-up{% elif s.pct_chg < 0 %}pct-down{% endif %}">
+                                {{ "%+.2f"|format(s.pct_chg) }}%
+                            </span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td class="px-3 py-2.5 text-right font-mono">
+                        {% if s.pe_deduct_ttm %}{{ "%.1f"|format(s.pe_deduct_ttm) }}{% else %}-{% endif %}
+                    </td>
+                    <td class="px-3 py-2.5 text-right font-mono">
+                        {% if s.dv_ttm %}{{ "%.2f"|format(s.dv_ttm) }}{% else %}-{% endif %}
+                    </td>
+                    <td class="px-3 py-2.5 text-right font-mono">
+                        {% if s.total_mv_yi %}{{ "%.1f"|format(s.total_mv_yi) }}{% else %}-{% endif %}
+                    </td>
+                    <td class="px-3 py-2.5 text-right">
+                        {% if s.composite_score %}
+                            <span class="{% if s.composite_score >= 75 %}score-high{% elif s.composite_score >= 60 %}score-mid{% else %}score-low{% endif %}">
+                                {{ "%.1f"|format(s.composite_score) }}
+                            </span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td class="px-3 py-2.5 text-right text-gray-500">
+                        {% if s.composite_rank %}{{ "%.1f"|format(s.composite_rank) }}%{% else %}-{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 右：行业分布饼图 (1/4) -->
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">行业分布（Top 15）</h3>
+        <canvas id="industryChart" height="280"></canvas>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script id="industry-data" type="application/json">{{ industry_dist | tojson }}</script>
+<script>
+(function () {
+    const raw = document.getElementById('industry-data');
+    const industryDist = raw ? JSON.parse(raw.textContent) : [];
+    if (!industryDist.length) return;
+    const ctx = document.getElementById('industryChart');
+    if (!ctx) return;
+    const labels = industryDist.map(function(d) { return d.industry; });
+    const data   = industryDist.map(function(d) { return d.count; });
+    const colors = [
+        '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6',
+        '#06b6d4','#f97316','#84cc16','#ec4899','#6366f1',
+        '#14b8a6','#f43f5e','#a855f7','#0ea5e9','#22c55e'
+    ];
+    new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors.slice(0, labels.length),
+                borderWidth: 1,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { font: { size: 11 }, boxWidth: 12, padding: 8 }
+                }
+            }
+        }
+    });
+}());
+</script>
+{% endblock %}

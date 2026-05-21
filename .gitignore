@@ -1,0 +1,59 @@
+# 环境变量（绝不提交）
+.env
+
+# 数据库文件（只排除根目录的 data/，不影响 app/data/ 等子目录）
+/data/
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+.env/
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# 日志
+logs/
+*.log
+
+# 测试覆盖率
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Mypy
+.mypy_cache/
+
+# Alembic
+alembic/versions/*.pyc
+
+# Excel 输出
+exports/
+
+# macOS
+.DS_Store
+
+# 非项目文件（本地私密文档，不推送）
+团鬼六/
+新建文件夹/
+Execution_Log.txt
+*.pdf
+*.docx

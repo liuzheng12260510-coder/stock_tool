@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}跑批历史 — StockSentry{% endblock %}
+{% block nav_jobs %}font-bold text-white underline{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-5">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">⚙️ 跑批历史</h1>
+        <p class="text-sm text-gray-500 mt-0.5">最近 50 条记录</p>
+    </div>
+    <button
+        hx-post="/api/jobs/run"
+        hx-swap="none"
+        hx-on::after-request="alert('跑批已启动！完成后刷新此页面查看结果。')"
+        class="px-4 py-2 bg-green-700 hover:bg-green-800 text-white text-sm rounded-lg font-medium transition">
+        ▶ 手动触发跑批
+    </button>
+</div>
+
+{% if not runs %}
+<div class="text-center py-16 bg-white rounded-xl border border-gray-100 shadow-sm">
+    <div class="text-5xl mb-4">📭</div>
+    <p class="text-gray-500 text-sm">暂无跑批记录，点击上方按钮触发第一次跑批</p>
+</div>
+{% else %}
+<div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+    <table class="w-full text-sm divide-y divide-gray-100">
+        <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+            <tr>
+                <th class="px-4 py-3 text-left">ID</th>
+                <th class="px-4 py-3 text-left">交易日</th>
+                <th class="px-4 py-3 text-left">开始时间</th>
+                <th class="px-4 py-3 text-left">完成时间</th>
+                <th class="px-4 py-3 text-center">状态</th>
+                <th class="px-4 py-3 text-right">扫描</th>
+                <th class="px-4 py-3 text-right">入选</th>
+                <th class="px-4 py-3 text-right">耗时(s)</th>
+                <th class="px-4 py-3 text-left">错误信息</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+        {% for r in runs %}
+        <tr class="hover:bg-gray-50 transition">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">#{{ r.id }}</td>
+            <td class="px-4 py-3 font-medium text-gray-700">{{ r.trade_date }}</td>
+            <td class="px-4 py-3 text-gray-500 text-xs font-mono">{{ r.started_at }}</td>
+            <td class="px-4 py-3 text-gray-500 text-xs font-mono">{{ r.finished_at }}</td>
+            <td class="px-4 py-3 text-center">
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium status-{{ r.status }}">
+                    {% if r.status == 'running' %}⏳ 运行中
+                    {% elif r.status == 'success' %}✅ 完成
+                    {% elif r.status == 'failed' %}❌ 失败
+                    {% else %}{{ r.status }}{% endif %}
+                </span>
+            </td>
+            <td class="px-4 py-3 text-right font-mono text-gray-600">{{ r.stocks_screened or '-' }}</td>
+            <td class="px-4 py-3 text-right font-mono text-green-600 font-semibold">{{ r.stocks_passed or '-' }}</td>
+            <td class="px-4 py-3 text-right font-mono text-gray-500">{{ r.duration_s or '-' }}</td>
+            <td class="px-4 py-3 text-xs text-red-500 max-w-xs truncate">{{ r.error or '' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- 自动刷新（若有 running 任务） -->
+{% set has_running = runs | selectattr('status', 'eq', 'running') | list | length > 0 %}
+{% if has_running %}
+<script>
+    setTimeout(() => location.reload(), 10000);
+    document.body.insertAdjacentHTML('beforeend',
+        '<div class="fixed bottom-4 right-4 bg-yellow-100 text-yellow-800 text-xs px-3 py-2 rounded-lg shadow">⏳ 跑批进行中，10秒后自动刷新…</div>'
+    );
+</script>
+{% endif %}
+{% endblock %}

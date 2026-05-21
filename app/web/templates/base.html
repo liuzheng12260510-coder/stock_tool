@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}StockSentry 个股哨兵{% endblock %}</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
+    <!-- Chart.js (饼图/折线图) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .score-high { color: #16a34a; font-weight: 600; }
+        .score-mid  { color: #d97706; font-weight: 600; }
+        .score-low  { color: #dc2626; font-weight: 600; }
+        .pct-up   { color: #dc2626; }
+        .pct-down { color: #16a34a; }
+        .status-running { background: #fef9c3; color: #92400e; }
+        .status-success { background: #dcfce7; color: #166534; }
+        .status-failed  { background: #fee2e2; color: #991b1b; }
+        .loading-spinner {
+            border: 3px solid #e5e7eb;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            width: 20px; height: 20px;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+    {% block head_extra %}{% endblock %}
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+
+<!-- 顶部导航 -->
+<nav class="bg-blue-900 text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
+        <a href="/" class="flex items-center gap-2 font-bold text-lg tracking-wide">
+            <span class="text-2xl">🛡️</span>
+            <span>StockSentry</span>
+            <span class="text-blue-300 text-sm font-normal hidden sm:block">个股哨兵</span>
+        </a>
+        <div class="flex items-center gap-4 text-sm">
+            <a href="/" class="hover:text-blue-200 transition {% block nav_dashboard %}{% endblock %}">看板</a>
+            <a href="/jobs" class="hover:text-blue-200 transition {% block nav_jobs %}{% endblock %}">跑批</a>
+            <a href="/api/docs" target="_blank" class="hover:text-blue-200 transition">API</a>
+        </div>
+    </div>
+</nav>
+
+<!-- 主内容 -->
+<main class="max-w-7xl mx-auto px-4 py-6">
+    {% block content %}{% endblock %}
+</main>
+
+<!-- 页脚 -->
+<footer class="mt-12 py-4 text-center text-gray-400 text-xs border-t border-gray-200">
+    StockSentry v1.0 — 仅供个人研究，不构成投资建议
+</footer>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

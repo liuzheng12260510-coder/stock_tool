@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}{{ snapshot.name if snapshot else ts_code }} — StockSentry{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="/" class="text-sm text-blue-600 hover:underline">← 返回看板</a>
+</div>
+
+{% if not snapshot %}
+<div class="text-center py-20">
+    <div class="text-5xl mb-4">❓</div>
+    <p class="text-gray-500">找不到股票 {{ ts_code }} 的数据，请先运行跑批</p>
+</div>
+{% else %}
+
+<!-- 头部信息卡 -->
+<div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-5">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+            <div class="flex items-center gap-3">
+                <h1 class="text-2xl font-bold text-gray-900">{{ snapshot.name }}</h1>
+                <span class="text-gray-400 font-mono">{{ snapshot.ts_code }}</span>
+                {% if snapshot.passed_screening %}
+                <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">✓ 已入选</span>
+                {% endif %}
+            </div>
+            <div class="text-sm text-gray-500 mt-1">{{ snapshot.industry or '行业未知' }} &nbsp;|&nbsp; 数据日期：{{ snapshot.trade_date }}</div>
+        </div>
+        <!-- 综合评分大字 -->
+        <div class="text-center">
+            <div class="text-4xl font-bold {% if snapshot.composite_score and snapshot.composite_score >= 75 %}text-green-600{% elif snapshot.composite_score and snapshot.composite_score >= 60 %}text-yellow-500{% else %}text-red-500{% endif %}">
+                {{ "%.1f"|format(snapshot.composite_score) if snapshot.composite_score else 'N/A' }}
+            </div>
+            <div class="text-xs text-gray-400">综合评分 /100</div>
+            {% if snapshot.composite_rank %}
+            <div class="text-xs text-gray-500">全市场前 {{ "%.1f"|format(100 - snapshot.composite_rank) }}%</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 关键指标网格 -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mt-5">
+        {% set metrics = [
+            ('收盘价', "%.2f"|format(snapshot.close) if snapshot.close else '-'),
+            ('涨跌幅', ("%+.2f"|format(snapshot.pct_chg) + '%') if snapshot.pct_chg is not none else '-'),
+            ('PE_TTM', "%.1f"|format(snapshot.pe_ttm) if snapshot.pe_ttm else '-'),
+            ('扣非PE_TTM', "%.1f"|format(snapshot.pe_deduct_ttm) if snapshot.pe_deduct_ttm else '-'),
+            ('市净率PB', "%.2f"|format(snapshot.pb) if snapshot.pb else '-'),
+            ('股息率', ("%.2f"|format(snapshot.dv_ttm) + '%') if snapshot.dv_ttm else '-'),
+            ('总市值(亿)', "%.1f"|format(snapshot.total_mv_yi) if snapshot.total_mv_yi else '-'),
+            ('市场排名%', "%.1f"|format(snapshot.composite_rank) if snapshot.composite_rank else '-'),
+        ] %}
+        {% for label, val in metrics %}
+        <div class="bg-gray-50 rounded-lg px-3 py-2.5 text-center">
+            <div class="text-xs text-gray-400 mb-1">{{ label }}</div>
+            <div class="font-semibold text-gray-800 text-sm">{{ val }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- 两栏：趋势图 + AI 解读 -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+
+    <!-- 综合评分趋势 -->
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+        <h2 class="text-base font-semibold text-gray-800 mb-3">📈 综合评分趋势（近 90 日）</h2>
+        {% if history %}
+        <canvas id="scoreChart" height="180"></canvas>
+        {% else %}
+        <div class="text-center py-10 text-gray-400 text-sm">暂无历史数据</div>
+        {% endif %}
+    </div>
+
+    <!-- AI 解读 -->
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5"
+         x-data="insightPanel('{{ snapshot.ts_code }}')">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-semibold text-gray-800">🤖 AI 深度解读</h2>
+            <button @click="fetchInsight()"
+                :disabled="loading"
+                class="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white text-xs rounded-lg font-medium transition flex items-center gap-1.5">
+                <span x-show="loading" class="loading-spinner w-3 h-3"></span>
+                <span x-text="loading ? '分析中…' : (insight ? '重新分析' : '生成解读')"></span>
+            </button>
+        </div>
+
+        <!-- 错误提示 -->
+        <div x-show="error" x-cloak class="mb-3 p-3 bg-red-50 rounded-lg text-red-600 text-sm" x-text="error"></div>
+
+        <!-- 等待状态 -->
+        <div x-show="!insight && !loading && !error" class="text-center py-10 text-gray-400 text-sm">
+            点击"生成解读"按钮，由 AI 对该股票进行五维度分析<br/>
+            <span class="text-xs text-gray-300">（首次约需 30-60 秒，之后命中缓存即时返回）</span>
+        </div>
+
+        <!-- 解读结果 -->
+        <div x-show="insight" x-cloak class="space-y-3 text-sm">
+            <div class="text-xs text-gray-400 mb-2" x-text="insight?.from_cache ? '📦 来自缓存 · ' + insight?.created_at?.substring(0,16) : '🔄 实时生成'"></div>
+            <template x-for="[label, key] in dimensions" :key="key">
+                <div class="border-l-4 border-purple-200 pl-3 py-1">
+                    <div class="font-medium text-gray-700 text-xs mb-1" x-text="label"></div>
+                    <div class="text-gray-600 leading-relaxed" x-text="insight?.[key] || '-'"></div>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script id="history-data" type="application/json">{{ history | tojson }}</script>
+<script>
+(function () {
+    const raw = document.getElementById('history-data');
+    const historyData = raw ? JSON.parse(raw.textContent) : [];
+    const scoreCtx = document.getElementById('scoreChart');
+    if (scoreCtx && historyData.length > 0) {
+        new Chart(scoreCtx, {
+            type: 'line',
+            data: {
+                labels: historyData.map(function(d) { return d.date; }),
+                datasets: [{
+                    label: '综合评分',
+                    data: historyData.map(function(d) { return d.composite_score; }),
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59,130,246,0.08)',
+                    tension: 0.3,
+                    pointRadius: 3,
+                    fill: true,
+                }]
+            },
+            options: {
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { min: 0, max: 100, grid: { color: '#f3f4f6' } },
+                    x: { ticks: { maxTicksLimit: 8, font: { size: 11 } } }
+                }
+            }
+        });
+    }
+}());
+
+function insightPanel(tsCode) {
+    return {
+        loading: false,
+        insight: null,
+        error: null,
+        dimensions: [
+            ['🌍 出海营收模式', 'overseas_revenue_pattern'],
+            ['🏘️ 本地化程度',   'localization_level'],
+            ['💡 核心商业逻辑', 'core_business_logic'],
+            ['🏰 护城河评估',   'moat_assessment'],
+            ['⚠️ 关键风险',     'key_risks'],
+        ],
+        async fetchInsight() {
+            this.loading = true;
+            this.error = null;
+            try {
+                const resp = await fetch(`/api/stocks/${tsCode}/insight`, { method: 'POST' });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || `HTTP ${resp.status}`);
+                }
+                this.insight = await resp.json();
+            } catch(e) {
+                this.error = `AI 解读失败：${e.message}`;
+            } finally {
+                this.loading = false;
+            }
+        }
+    }
+}
+</script>
+{% endblock %}
