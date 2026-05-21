@@ -59,8 +59,8 @@ def _zscore_normalize(values: np.ndarray, higher_is_better: bool = True) -> np.n
     std = np.std(valid, ddof=1)
 
     if std < 1e-10:
-        # 所有值相同，统一给 50 分
-        out[valid_mask] = 50.0
+        # 所有值相同 → 该维度无横截面区分度 → 保持全 NaN，退出本维度加权
+        # 注意：不给 50 分，避免造成大批股票"同分平台"Bug
         return out
 
     z = (valid - mean) / std
@@ -135,11 +135,15 @@ def compute_cross_sectional_scores(
         SCORE_WEIGHTS["safety"],
     ])
 
+    # 至少需要此数量的有效维度才计算综合分，否则信息太少不可信
+    MIN_VALID_DIMS = 3
+
     composite = []
     for i in range(n):
         row_scores = df[score_cols].iloc[i].values.astype(float)
         valid = ~np.isnan(row_scores)
-        if valid.sum() == 0:
+        if valid.sum() < MIN_VALID_DIMS:
+            # 有效维度不足 3 个 → 信息量不足，不输出综合分
             composite.append(np.nan)
         else:
             w = weights[valid]
@@ -151,7 +155,8 @@ def compute_cross_sectional_scores(
     # 全市场百分位 (0-100)
     valid_scores = df["composite_score"].dropna()
     if len(valid_scores) > 0:
-        df["composite_rank"] = df["composite_score"].rank(pct=True) * 100
+        # method='min'：同分时取较小排名，避免庸才拿虚高排名
+        df["composite_rank"] = df["composite_score"].rank(pct=True, method="min") * 100
     else:
         df["composite_rank"] = np.nan
 

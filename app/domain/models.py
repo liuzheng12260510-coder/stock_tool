@@ -5,6 +5,7 @@ v1: 初始版本
 v2 (P0): StockInfo / StockSnapshot 扩展
 v3 (P1): QuarterRecord 补充杜邦/盈余质量字段；新增 DividendRecord；
          FactorResult 新增 dupont/earnings_quality/dividend_continuity 字段
+v4 (T4+T5): FactorResult 加 close/pct_chg/amount；StockSnapshot 加 5 维分项 + fail_reasons
 """
 from __future__ import annotations
 
@@ -17,27 +18,22 @@ class QuarterRecord:
     """季度财务报告原始数据（TTM / 杜邦计算用）"""
 
     ts_code: str
-    end_date: date          # 报告期，e.g. 2024-09-30
-    q_dtprofit: float       # 单季度扣非净利润（元）
+    end_date: date
+    q_dtprofit: float
     total_cur_assets: float = 0.0
     total_liab: float = 0.0
     op_revenue: float = 0.0
     source: str = "tushare"
 
-    # ── P1 新增：杜邦分解字段 ─────────────────────────────────────
-    roe: float | None = None              # ROE 净资产收益率 %
-    npta: float | None = None             # 总资产净利率 %
-    debt_to_assets: float | None = None   # 资产负债率 %
-    assets_turn: float | None = None      # 总资产周转率（次）
-    eqt_multiplier: float | None = None   # 权益乘数
-
-    # ── P1 新增：同比增速字段 ──────────────────────────────────────
-    netprofit_yoy: float | None = None    # 净利润同比增速 %
-    op_yoy: float | None = None           # 营收同比增速 %
-
-    # ── P1 新增：盈余质量字段 ──────────────────────────────────────
-    n_cashflow_act: float | None = None   # 经营活动现金流净额（万元）
-    cfo_to_np: float | None = None        # CFO / 净利润（盈余质量核心）
+    roe: float | None = None
+    npta: float | None = None
+    debt_to_assets: float | None = None
+    assets_turn: float | None = None
+    eqt_multiplier: float | None = None
+    netprofit_yoy: float | None = None
+    op_yoy: float | None = None
+    n_cashflow_act: float | None = None
+    cfo_to_np: float | None = None
 
 
 @dataclass
@@ -45,16 +41,16 @@ class DividendRecord:
     """单次分红记录（来自 Tushare dividend 接口）"""
 
     ts_code: str
-    end_date: date           # 分红年度（财年末，e.g. 2023-12-31）
-    div_proc: str = ""       # 实施进度（"实施"=已派现）
-    stk_div: float | None = None      # 每股送股
-    cash_div: float | None = None     # 每股派现（税前）
-    cash_div_tax: float | None = None # 每股派现（税后）
-    ann_date: date | None = None      # 公告日
-    base_date: date | None = None     # 股权登记日
-    pay_date: date | None = None      # 派息日
-    record_date: date | None = None   # 债权登记日
-    ex_date: date | None = None       # 除权除息日
+    end_date: date
+    div_proc: str = ""
+    stk_div: float | None = None
+    cash_div: float | None = None
+    cash_div_tax: float | None = None
+    ann_date: date | None = None
+    base_date: date | None = None
+    pay_date: date | None = None
+    record_date: date | None = None
+    ex_date: date | None = None
 
 
 @dataclass
@@ -65,14 +61,14 @@ class FactorResult:
     trade_date: date
 
     # ── 原始因子 ─────────────────────────────────────────────────
-    pe_ttm: float | None = None          # 市盈率 TTM（来自行情，未修正）
-    pe_deduct_ttm: float | None = None   # 扣非 PE TTM（自算）
-    pb: float | None = None              # 市净率
-    dv_ttm: float | None = None          # 股息率 TTM %
-    total_mv: float | None = None        # 总市值（万元）
-    growth_rate: float | None = None     # 营收/利润增速 %
-    volatility: float | None = None      # 近60日波动率 %
-    safety_margin: float | None = None   # 安全边际分（0-100）
+    pe_ttm: float | None = None
+    pe_deduct_ttm: float | None = None
+    pb: float | None = None
+    dv_ttm: float | None = None
+    total_mv: float | None = None
+    growth_rate: float | None = None
+    volatility: float | None = None
+    safety_margin: float | None = None
 
     # ── z-score 归一化评分（0-100，横截面）───────────────────────
     value_score: float | None = None
@@ -83,24 +79,29 @@ class FactorResult:
 
     # ── 综合 ─────────────────────────────────────────────────────
     composite_score: float | None = None
-    composite_rank: float | None = None  # 全市场百分位 0-100
+    composite_rank: float | None = None
 
     # ── 筛选结论 ─────────────────────────────────────────────────
     passed_screening: bool = False
     fail_reasons: list[str] = field(default_factory=list)
 
-    # ── P1 新增：杜邦综合分（绝对分，0-100，非横截面）────────────
+    # ── P1：杜邦 ─────────────────────────────────────────────────
     dupont_score: float | None = None
-    high_leverage_flag: bool = False      # 高杠杆粉饰 ROE 红旗
+    high_leverage_flag: bool = False
 
-    # ── P1 新增：盈余质量分（绝对分，0-100）─────────────────────
+    # ── P1：盈余质量 ──────────────────────────────────────────────
     earnings_quality_score: float | None = None
-    cfo_to_np_ratio: float | None = None  # 近4季 CFO/NP 平均
+    cfo_to_np_ratio: float | None = None
 
-    # ── P1 新增：分红连续性（年数 + 分）──────────────────────────
-    dividend_continuity: int | None = None         # 连续分红年数
-    dividend_continuity_score: float | None = None # 分红连续性分（0-100）
-    clearance_dividend_flag: bool = False           # 清仓式分红红旗
+    # ── P1：分红连续性 ────────────────────────────────────────────
+    dividend_continuity: int | None = None
+    dividend_continuity_score: float | None = None
+    clearance_dividend_flag: bool = False
+
+    # ── T4 新增：行情基础字段（供硬过滤使用，不参与评分）──────────
+    close: float | None = None       # 当日收盘价（元）
+    pct_chg: float | None = None     # 当日涨跌幅 %
+    amount: float | None = None      # 当日成交额（万元），None/0 表示停牌
 
 
 @dataclass
@@ -112,19 +113,17 @@ class StockInfo:
     industry: str = ""
     exchange: str = ""
     list_date: date | None = None
-    act_ent_type: str = ""   # 实际控制人类型（Tushare 字段）
-    act_name: str = ""       # 实际控制人名称
-    is_private: bool = False  # 派生：是否民企
+    act_ent_type: str = ""
+    act_name: str = ""
+    is_private: bool = False
 
 
 @dataclass
 class StockSnapshot:
     """
-    某一交易日的股票完整快照（行情 + 因子），
-    可直接序列化给前端
+    某一交易日的股票完整快照（行情 + 因子），可直接序列化给前端
 
-    v4 (P3)：补充 dupont_score / dividend_continuity / high_leverage_flag
-    用于看板列表新增列和 AI prompt 增强
+    v4 (T5)：补充 5 维分项分 + fail_reasons，服务多 Sheet 导出和前端显示
     """
 
     ts_code: str
@@ -136,17 +135,25 @@ class StockSnapshot:
     pe_deduct_ttm: float | None = None
     pb: float | None = None
     dv_ttm: float | None = None
-    total_mv_yi: float | None = None    # 亿元
+    total_mv_yi: float | None = None
     composite_score: float | None = None
     composite_rank: float | None = None
     passed_screening: bool = False
     industry: str = ""
 
-    # ── P3 新增：因子详情（供列表列、AI Prompt 使用）────────────────
-    dupont_score: float | None = None           # 杜邦综合分（0-100）
-    dividend_continuity: int | None = None      # 连续分红年数
-    high_leverage_flag: bool = False            # 高杠杆红旗
-    earnings_quality_score: float | None = None # 盈余质量分（0-100）
+    # ── P3：因子详情 ──────────────────────────────────────────────
+    dupont_score: float | None = None
+    dividend_continuity: int | None = None
+    high_leverage_flag: bool = False
+    earnings_quality_score: float | None = None
+
+    # ── T5 新增：5 维分项分（导出多 Sheet / 前端雷达图）──────────
+    value_score: float | None = None
+    growth_score: float | None = None
+    stability_score: float | None = None
+    dividend_score: float | None = None
+    safety_score: float | None = None
+    fail_reasons: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -154,12 +161,11 @@ class AIInsight:
     """AI 解读结果（5 个维度 + P3 financial_red_flags）"""
 
     ts_code: str
-    overseas_revenue_pattern: str = ""    # 出海营收模式
-    localization_level: str = ""          # 本地化程度
-    core_business_logic: str = ""         # 核心商业逻辑
-    moat_assessment: str = ""             # 护城河评估
-    key_risks: str = ""                   # 关键风险
-    # ── P3 新增：AI 综合识别的财务红旗 ─────────────────────────────────
+    overseas_revenue_pattern: str = ""
+    localization_level: str = ""
+    core_business_logic: str = ""
+    moat_assessment: str = ""
+    key_risks: str = ""
     financial_red_flags: list[str] = field(default_factory=list)
     model: str = ""
     status: str = "pending"

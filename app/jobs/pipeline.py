@@ -247,14 +247,14 @@ class Pipeline:
         logger.info("pipeline.step.stock_basic")
         self._checkpoint_step(
             job_id, "stock_basic", done_steps,
-            self._update_stock_basic, skip_if_done=True,
+            self._update_stock_basic, skip_if_done=False,  # T1: 每日刷新捕获 ST/退市状态
         )
 
         # ── Step 2: blacklist ─────────────────────────────────────────
         logger.info("pipeline.step.blacklist")
         self._checkpoint_step(
             job_id, "blacklist", done_steps,
-            lambda: self._update_blacklist(trade_date), skip_if_done=True,
+            lambda: self._update_blacklist(trade_date), skip_if_done=False,  # T1
         )
 
         # ── Step 3: daily (始终拉取以构建内存 DataFrame) ────────────
@@ -352,6 +352,14 @@ class Pipeline:
             logger.warning("pipeline.factor_compute_empty")
             return 0, 0
         assert factor_results is not None  # narrow type for Pylance
+
+        # T4 post-process: 回填 close/pct_chg/amount 供硬过滤使用
+        _code_mkt: dict = {r["ts_code"]: r for r in market_df.to_dict("records")}
+        for _fr in factor_results:
+            _mrow = _code_mkt.get(_fr.ts_code, {})
+            _fr.close = _to_float(_mrow.get("close"))
+            _fr.pct_chg = _to_float(_mrow.get("pct_chg"))
+            _fr.amount = _to_float(_mrow.get("amount"))
 
         # ── Step 9: scoring (始终执行) ─────────────────────────────────
         logger.info("pipeline.step.scoring", count=len(factor_results))
@@ -880,6 +888,7 @@ class Pipeline:
                     existing.act_ent_type = act_ent_type
                     existing.act_name = act_name
                     existing.is_private = is_private
+                    existing.list_status = str(row.get("list_status", "L") or "L")  # T1
                 else:
                     list_date_raw = row.get("list_date")
                     list_date = None
@@ -896,6 +905,7 @@ class Pipeline:
                         act_ent_type=act_ent_type,
                         act_name=act_name,
                         is_private=is_private,
+                        list_status=str(row.get("list_status", "L") or "L"),  # T1
                     )
                     db.add(stock)
 
@@ -904,14 +914,22 @@ class Pipeline:
     def _update_blacklist(self, trade_date: date) -> None:
         """更新黑名单表（upsert），同步 stocks.is_blacklisted 标志"""
         with db_session() as db:
-            stock_rows = db.query(Stock.ts_code, Stock.name, Stock.list_date).all()
+            # T1: 增加 list_status，传给 build_blacklist_from_df，激活 D/P 最高优先剔除
+            stock_rows = db.query(
+                Stock.ts_code, Stock.name, Stock.list_date, Stock.list_status
+            ).all()
 
         if not stock_rows:
             logger.warning("pipeline.blacklist.stocks_empty")
             return
 
         stock_df = pd.DataFrame([
-            {"ts_code": r.ts_code, "name": r.name or "", "list_date": r.list_date}
+            {
+                "ts_code": r.ts_code,
+                "name": r.name or "",
+                "list_date": r.list_date,
+                "list_status": r.list_status or "L",
+            }
             for r in stock_rows
         ])
 
@@ -1137,6 +1155,7 @@ class Pipeline:
                     growth_rate=f.growth_rate,
                     volatility=f.volatility,
                     safety_margin=f.safety_margin,
+                    dv_ttm=f.dv_ttm,          # T2: 冗余存储，防 DailySnapshot 缺失
                     value_score=f.value_score,
                     growth_score=f.growth_score,
                     stability_score=f.stability_score,

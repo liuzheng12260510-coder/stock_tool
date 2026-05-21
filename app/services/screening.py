@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from datetime import date
 
+import json
+
 from app.core.logging import get_logger
 from app.data.trade_calendar import get_latest_trade_date
 from app.db.models import DailySnapshot, FactorScore, Stock
@@ -69,6 +71,12 @@ def get_screened_stocks(
             if snap and snap.total_mv:
                 total_mv_yi = snap.total_mv / 10_000.0
 
+            # T2：dv_ttm 优先用 FactorScore（直接来自 daily_basic），
+            #     fallback 到 DailySnapshot（两者应一致，但 FactorScore 更可靠）
+            dv_ttm_val = fs.dv_ttm
+            if dv_ttm_val is None and snap:
+                dv_ttm_val = snap.dv_ttm
+
             snapshots.append(StockSnapshot(
                 ts_code=fs.ts_code,
                 name=stock.name if stock else fs.ts_code,
@@ -78,17 +86,23 @@ def get_screened_stocks(
                 pe_ttm=snap.pe_ttm if snap else None,
                 pe_deduct_ttm=fs.pe_deduct_ttm,
                 pb=snap.pb if snap else None,
-                dv_ttm=snap.dv_ttm if snap else None,
+                dv_ttm=dv_ttm_val,
                 total_mv_yi=total_mv_yi,
                 composite_score=fs.composite_score,
                 composite_rank=fs.composite_rank,
                 passed_screening=True,
                 industry=stock.industry if stock else "",
-                # P3 新增：因子详情列
                 dupont_score=fs.dupont_score,
                 dividend_continuity=fs.dividend_continuity,
                 high_leverage_flag=bool(fs.high_leverage_flag) if fs.high_leverage_flag is not None else False,
                 earnings_quality_score=fs.earnings_quality_score,
+                # T5 新增：5 维分项分 + fail_reasons
+                value_score=fs.value_score,
+                growth_score=fs.growth_score,
+                stability_score=fs.stability_score,
+                dividend_score=fs.dividend_score,
+                safety_score=fs.safety_score,
+                fail_reasons=json.loads(fs.fail_reasons) if fs.fail_reasons else [],
             ))
 
     return snapshots, total_count, trade_date

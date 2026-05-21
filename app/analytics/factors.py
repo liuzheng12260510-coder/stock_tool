@@ -179,10 +179,15 @@ def compute_all_factors(
 
     # ── P1：分红连续性 ────────────────────────────────────────────────────
     div_list = dividends or []
-    current_year = trade_date.year if hasattr(trade_date, "year") else trade_date.year
-    continuity = compute_continuity(div_list, current_year)
+    current_year = trade_date.year
+    # 无历史分红数据时设 None（"不知道"），区别于 0（"确认从未分红"）
+    # apply_hard_filters 里 `is not None` 守卫确保 None 不触发连续性惩罚
+    if div_list:
+        continuity: int | None = compute_continuity(div_list, current_year)
+    else:
+        continuity = None
     result.dividend_continuity = continuity
-    result.dividend_continuity_score = score_div_continuity(continuity)
+    result.dividend_continuity_score = score_div_continuity(continuity if continuity is not None else 0)
     result.clearance_dividend_flag = detect_clearance_dividend(div_list)
 
     logger.debug(

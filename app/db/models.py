@@ -47,6 +47,9 @@ class Stock(Base):
     act_name: Mapped[str] = mapped_column(String(64), default="")
     is_private: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # ── T1 新增：上市状态（Tushare list_status: L=上市, D=退市, P=暂停上市）──
+    list_status: Mapped[str] = mapped_column(String(1), default="L", index=True)
+
     # ── P0 新增列（v2 migration）──────────────────────────────────────────
     # 是否在全局黑名单中（冗余字段，加速 pipeline 预筛）
     is_blacklisted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
@@ -194,6 +197,9 @@ class FactorScore(Base):
     # 综合
     composite_score: Mapped[float | None] = mapped_column(Float)
     composite_rank: Mapped[float | None] = mapped_column(Float)   # 全市场百分位
+
+    # T2 新增：保存来自 FactorResult 的原始股息率（DailySnapshot.dv_ttm 备份）
+    dv_ttm: Mapped[float | None] = mapped_column(Float)
 
     # 筛选结论
     passed_screening: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

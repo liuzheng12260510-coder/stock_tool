@@ -4,6 +4,7 @@
 v1: 初始版本
 v2 (P0): 黑名单/次新股/熔断器/fina_loop_rescue 配置
 v3 (P1): 杜邦/盈余质量/分红连续性 筛选阈值
+v4 (P4): T1~T4 全量改进：市值下限/价格下限/异动剔除/停牌剔除/行业剔除
 """
 from __future__ import annotations
 
@@ -44,7 +45,7 @@ class Settings(BaseSettings):
     screen_pe_ttm_max: float = 30.0
     screen_pe_deduct_max: float = 20.0
     screen_dv_ttm_min: float = 2.0
-    screen_total_mv_max_yi: float = 100.0   # 亿元，0 = 不限
+    screen_total_mv_max_yi: float = 100.0   # 亿元，0 = 不限（上限）
     screen_exclude_bj: bool = True           # 排除北交所
     screen_exclude_soe: bool = True          # 排除国企/央企
     screen_min_composite_score: float = 60.0
@@ -56,6 +57,18 @@ class Settings(BaseSettings):
     # ── 黑名单 & 次新股 ──────────────────────────────────────────────────
     screen_min_list_years: float = 1.0
 
+    # ── T4 新增：硬过滤强化（市值下限/价格下限/异动/停牌/行业 nan）──────────
+    # 总市值下限（亿元），0 = 不限；剔除微市值壳股（如退市风险股）
+    screen_min_total_mv_yi: float = 30.0
+    # 股价下限（元/股），0 = 不限；剔除仙股
+    screen_min_close_price: float = 2.0
+    # 当日 |涨跌幅%| 上限，0 = 不限；涨跌停股在该截面价格失真，排除
+    screen_max_abs_pct_chg: float = 7.0
+    # 行业字段为空（nan/None/""）时直接剔除
+    screen_exclude_industry_nan: bool = True
+    # 当日无成交额（上报为 0 或 None）视为停牌，临时排除
+    screen_exclude_no_volume: bool = True
+
     # ── 熔断器（Circuit Breaker）配置 ───────────────────────────────────
     breaker_failure_threshold: int = 5
     breaker_cooldown_seconds: int = 300
@@ -64,15 +77,12 @@ class Settings(BaseSettings):
     enable_fina_loop_rescue: bool = False
 
     # ── P1 新增：杜邦高杠杆排雷 ─────────────────────────────────────────
-    # 权益乘数上限（超过此值触发高杠杆红旗并剔除），0 = 不限
     screen_max_eqt_multiplier: float = 3.0
 
     # ── P1 新增：盈余质量阈值 ─────────────────────────────────────────────
-    # 经营活动现金流 / 净利润下限（低于此值剔除），0 = 不限
     screen_min_cfo_to_np: float = 0.5
 
     # ── P1 新增：分红连续性阈值 ──────────────────────────────────────────
-    # 最低连续分红年数（低于此值剔除），0 = 不限
     screen_min_div_continuity_years: int = 3
 
     # 是否剔除"清仓式分红"标的（单年派现占近5年总额>70%）
@@ -88,7 +98,6 @@ class Settings(BaseSettings):
 
     # ── Tushare 限速 ────────────────────────────────────────────────────
     tushare_rate_limit: int = 180  # req/min
-    # P2 新增：突发容量（0 = 等于 rate_limit）
     tushare_burst_capacity: int = 0
 
     # ── 路径 ─────────────────────────────────────────────────────────────

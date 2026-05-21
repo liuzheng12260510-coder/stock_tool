@@ -231,12 +231,50 @@ def _migrate_v5(conn) -> None:
                 raise
 
 
+def _migrate_v6(conn) -> None:
+    """
+    v6 迁移 — T1+T2 全量改进:
+    1. stocks 表增加 list_status 列（L=上市, D=退市, P=暂停）
+    2. factor_scores 表增加 dv_ttm 列（从 FactorResult 冗余存储，防止 DailySnapshot 空值）
+    """
+    # ── stocks 增列 ──────────────────────────────────────────────────────
+    for col_name, col_def in [
+        ("list_status", "VARCHAR(1) NOT NULL DEFAULT 'L'"),
+    ]:
+        try:
+            conn.execute(text(f"ALTER TABLE stocks ADD COLUMN {col_name} {col_def}"))
+            logger.info("migration.add_column", table="stocks", column=col_name)
+        except Exception as e:
+            if "duplicate column name" in str(e).lower():
+                logger.debug("migration.column_exists", table="stocks", column=col_name)
+            else:
+                raise
+
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_stocks_list_status ON stocks (list_status)"
+    ))
+
+    # ── factor_scores 增列 ────────────────────────────────────────────────
+    for col_name, col_def in [
+        ("dv_ttm", "REAL"),
+    ]:
+        try:
+            conn.execute(text(f"ALTER TABLE factor_scores ADD COLUMN {col_name} {col_def}"))
+            logger.info("migration.add_column", table="factor_scores", column=col_name)
+        except Exception as e:
+            if "duplicate column name" in str(e).lower():
+                logger.debug("migration.column_exists", table="factor_scores", column=col_name)
+            else:
+                raise
+
+
 MIGRATIONS: list[tuple[int, str, Callable]] = [
     # v1 由 Base.metadata.create_all 处理，此处不重复
     (2, "P0: stocks 新增黑名单辅助列；blacklist / schema_migrations 表", _migrate_v2),
     (3, "P1_01_financial_deep_columns: 杜邦/盈余质量/分红历史", _migrate_v3),
     (4, "P2_01_job_checkpoints: job_runs 增断点续传字段；新建 job_checkpoints 表", _migrate_v4),
     (5, "P3_01_ai_red_flags: ai_insights 增 financial_red_flags 列", _migrate_v5),
+    (6, "T1+T2: stocks 增 list_status；factor_scores 增 dv_ttm", _migrate_v6),
 ]
 
 

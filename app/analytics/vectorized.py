@@ -151,7 +151,7 @@ def batch_compute_factors(
     leverage_flag_map: dict[str, bool] = {}
     cfo_ratio_map: dict[str, float | None] = {}
     eq_score_map: dict[str, float | None] = {}
-    continuity_map: dict[str, int] = {}
+    continuity_map: dict[str, int | None] = {}  # None = 无历史数据，不惩罚
     cont_score_map: dict[str, float] = {}
     clearance_map: dict[str, bool] = {}
 
@@ -186,10 +186,14 @@ def batch_compute_factors(
         cfo_ratio_map[ts_code] = cfo_r
         eq_score_map[ts_code] = score_earnings_quality(cfo_r)
 
-        # 分红连续性
-        cont = compute_continuity(dividends, current_year)
+        # 分红连续性：无历史数据时设 None（"不知道"），区别于 0（"确认从未分红"）
+        # apply_hard_filters 里已有 `is not None` 守卫，None 不会触发连续性惩罚
+        if dividends:
+            cont: int | None = compute_continuity(dividends, current_year)
+        else:
+            cont = None
         continuity_map[ts_code] = cont
-        cont_score_map[ts_code] = score_div_continuity(cont)
+        cont_score_map[ts_code] = score_div_continuity(cont if cont is not None else 0)
         clearance_map[ts_code] = detect_clearance_dividend(dividends)
 
     # ── 阶段 2：向量化 safety_margin（df.apply + numpy）──────────────────
@@ -233,7 +237,7 @@ def batch_compute_factors(
         fr.high_leverage_flag = leverage_flag_map.get(ts_code, False)
         fr.cfo_to_np_ratio = cfo_ratio_map.get(ts_code)
         fr.earnings_quality_score = eq_score_map.get(ts_code)
-        fr.dividend_continuity = continuity_map.get(ts_code, 0)
+        fr.dividend_continuity = continuity_map.get(ts_code)  # None = 无历史数据，不做连续性惩罚
         fr.dividend_continuity_score = cont_score_map.get(ts_code, 0.0)
         fr.clearance_dividend_flag = clearance_map.get(ts_code, False)
         results.append(fr)
